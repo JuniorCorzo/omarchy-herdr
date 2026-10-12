@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.herdr",
+  "name": "Herdr Sessions",
+  "version": "1.0.0",
+  "author": "Junior Corzo",
+  "description": "Native Omarchy Quickshell menu to browse and attach active Herdr sessions",
+  "kinds": [
+    "menu"
+  ],
+  "entryPoints": {
+    "menu": "Menu.qml"
+  }
+}

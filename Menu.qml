@@ -71,7 +71,7 @@ Item {
   function dismiss() {
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function") {
-      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.herdr")
+      root.shell.hide((root.manifest && root.manifest.id) || "juniorcorzo.herdr")
     }
   }
 

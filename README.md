@@ -101,7 +101,7 @@ Clone the repository and symlink it into your local Omarchy plugins directory:
 git clone https://github.com/JuniorCorzo/omarchy-herdr.git ~/Work/personal/omarchy-herdr
 
 # Create the plugin symlink
-ln -sfn ~/Work/personal/omarchy-herdr ~/.config/omarchy/plugins/omarchy.herdr
+ln -sfn ~/Work/personal/omarchy-herdr ~/.config/omarchy/plugins/juniorcorzo.herdr
 ```
 
 ---
@@ -110,13 +110,13 @@ ln -sfn ~/Work/personal/omarchy-herdr ~/.config/omarchy/plugins/omarchy.herdr
 
 ### 1. Enable Plugin in `shell.json`
 
-Add `"id": "omarchy.herdr"` to the `"plugins"` array in your Omarchy shell configuration (`~/.config/omarchy/shell.json` or your dotfiles):
+Add `"id": "juniorcorzo.herdr"` to the `"plugins"` array in your Omarchy shell configuration (`~/.config/omarchy/shell.json` or your dotfiles):
 
 ```json
 {
   "plugins": [
     {
-      "id": "omarchy.herdr"
+      "id": "juniorcorzo.herdr"
     }
   ]
 }
@@ -127,7 +127,7 @@ Add `"id": "omarchy.herdr"` to the `"plugins"` array in your Omarchy shell confi
 Add the keybinding to your Hyprland user bindings file (`~/.config/hypr/bindings.lua`):
 
 ```lua
-o.bind("SUPER + CTRL + RETURN", "Herdr sessions menu", "omarchy-shell shell toggle omarchy.herdr")
+o.bind("SUPER + CTRL + RETURN", "Herdr sessions menu", "omarchy-shell shell toggle juniorcorzo.herdr")
 ```
 
 ### 3. Rescan Plugins

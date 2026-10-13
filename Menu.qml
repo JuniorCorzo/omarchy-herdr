@@ -20,9 +20,8 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
+  property bool userNavigatedList: false
   property var rawSessions: []
-  property bool createMode: false
-  property string newSessionInput: ""
 
   // Reactive Omarchy color tokens with safe fallbacks and Qt.rgba(...)
   readonly property color colorBackground: (typeof Color !== "undefined" && Color.background) ? Color.background : Qt.rgba(0.06, 0.07, 0.08, 0.98)
@@ -46,6 +45,7 @@ Item {
   property int contentMargin: (typeof Style !== "undefined" && Style.spacing && Style.spacing.panelPadding !== undefined) ? Style.spacing.panelPadding : 16
   property int contentSpacing: (typeof Style !== "undefined" && Style.spacing && Style.spacing.md !== undefined) ? Style.spacing.md : 12
   property int headerHeight: Math.max(48, (typeof Style !== "undefined" && Style.space) ? Style.space(48) : 48)
+  property int inputSlotHeight: Math.max(42, (typeof Style !== "undefined" && Style.space) ? Style.space(42) : 42)
   property int rowHeight: Math.max(64, (typeof Style !== "undefined" && Style.space) ? Style.space(64) : 64)
   property int rowSpacing: (typeof Style !== "undefined" && Style.spacing && Style.spacing.xs !== undefined) ? Style.spacing.xs : 6
   property int footerHeight: Math.max(28, (typeof Style !== "undefined" && Style.space) ? Style.space(28) : 28)
@@ -55,30 +55,47 @@ Item {
   property var borderSpec: (typeof Border !== "undefined" && Border.surfaceSpec) ? Border.surfaceSpec("menu", "border", menuBorder, 1) : null
   property var selectedBorderSpec: (typeof Border !== "undefined" && Border.surfaceSpec) ? Border.surfaceSpec("menu", "selected-border", menuSelectedBorder, 1) : null
 
+  onOpenedChanged: {
+    if (root.opened) {
+      Qt.callLater(function() {
+        if (typeof sessionTextInput !== "undefined") {
+          sessionTextInput.forceActiveFocus()
+        }
+      })
+    }
+  }
+
   // Lifecycle hooks called by omarchy-shell
   function open(payloadJson) {
     root.opened = true
     root.filterText = ""
-    root.createMode = false
-    root.newSessionInput = ""
-    if (typeof sessionNameInput !== "undefined") sessionNameInput.text = ""
+    root.userNavigatedList = false
     root.selectedIndex = 0
     root.cursorActive = false
+    if (typeof sessionTextInput !== "undefined") sessionTextInput.text = ""
     root.disarmPointer()
     root.fetchSessions()
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    Qt.callLater(function() {
+      if (typeof sessionTextInput !== "undefined") {
+        sessionTextInput.forceActiveFocus()
+      }
+    })
   }
 
   function close() {
     root.opened = false
-    root.createMode = false
-    root.newSessionInput = ""
+    root.filterText = ""
+    root.userNavigatedList = false
+    root.cursorActive = false
+    if (typeof sessionTextInput !== "undefined") sessionTextInput.text = ""
   }
 
   function dismiss() {
     root.opened = false
-    root.createMode = false
-    root.newSessionInput = ""
+    root.filterText = ""
+    root.userNavigatedList = false
+    root.cursorActive = false
+    if (typeof sessionTextInput !== "undefined") sessionTextInput.text = ""
     if (root.shell && typeof root.shell.hide === "function") {
       root.shell.hide((root.manifest && root.manifest.id) || "juniorcorzo.herdr")
     }
@@ -172,7 +189,9 @@ Item {
     root.selectedIndex = displayModel.count > 0
       ? Math.max(0, Math.min(root.selectedIndex, displayModel.count - 1))
       : 0
-    root.cursorActive = displayModel.count > 0
+    if (!root.userNavigatedList) {
+      root.cursorActive = false
+    }
     root.disarmPointer()
 
     Qt.callLater(function() {
@@ -185,13 +204,22 @@ Item {
   function setFilter(newFilter) {
     root.filterText = newFilter
     root.selectedIndex = 0
+    root.userNavigatedList = false
+    root.cursorActive = false
     root.rebuildDisplay()
   }
 
   function select(delta) {
     if (displayModel.count === 0) return
-    root.cursorActive = true
-    root.selectedIndex = (root.selectedIndex + delta + displayModel.count) % displayModel.count
+    if (!root.userNavigatedList) {
+      root.cursorActive = true
+      root.userNavigatedList = true
+      root.selectedIndex = delta > 0 ? 0 : (displayModel.count - 1)
+    } else {
+      root.cursorActive = true
+      root.userNavigatedList = true
+      root.selectedIndex = (root.selectedIndex + delta + displayModel.count) % displayModel.count
+    }
     root.disarmPointer()
     sessionListView.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
@@ -199,6 +227,7 @@ Item {
   function selectAbsolute(index) {
     if (displayModel.count === 0) return
     root.cursorActive = true
+    root.userNavigatedList = true
     root.selectedIndex = Math.max(0, Math.min(index, displayModel.count - 1))
     root.disarmPointer()
     sessionListView.positionViewAtIndex(root.selectedIndex, ListView.Contain)
@@ -207,6 +236,7 @@ Item {
   function selectFromPointer(index, item, mouse) {
     if (!pointerGate.moved(item, mouse)) return
     root.cursorActive = true
+    root.userNavigatedList = true
     root.selectedIndex = index
   }
 
@@ -226,45 +256,17 @@ Item {
     }
   }
 
-  function startCreateSession() {
-    root.createMode = true
-    root.newSessionInput = ""
-    if (typeof sessionNameInput !== "undefined") sessionNameInput.text = ""
-    Qt.callLater(function() {
-      if (typeof sessionNameInput !== "undefined") sessionNameInput.forceActiveFocus()
-    })
-  }
-
-  function cancelCreateSession() {
-    root.createMode = false
-    root.newSessionInput = ""
-    if (typeof sessionNameInput !== "undefined") sessionNameInput.text = ""
-    Qt.callLater(function() {
-      keyCatcher.forceActiveFocus()
-    })
-  }
-
-  function commitCreateSession() {
-    var name = root.newSessionInput.trim()
-    if (name.length > 0) {
-      root.createMode = false
-      root.newSessionInput = ""
-      if (typeof sessionNameInput !== "undefined") sessionNameInput.text = ""
-      root.attachSession(name)
-    } else {
-      if (typeof sessionNameInput !== "undefined") sessionNameInput.forceActiveFocus()
-    }
-  }
-
-  function newSession() {
-    root.startCreateSession()
-  }
-
   function activateIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var item = displayModel.get(index)
     if (item.isAction) {
-      root.startCreateSession()
+      var trimmed = sessionTextInput.text.trim()
+      if (trimmed.length > 0) {
+        root.attachSession(trimmed)
+      } else {
+        sessionTextInput.forceActiveFocus()
+        sessionTextInput.selectAll()
+      }
     } else {
       root.attachSession(item.name)
     }
@@ -330,66 +332,9 @@ Item {
 
       MouseArea {
         anchors.fill: parent
-        onClicked: {} // Absorb clicks within the card
-      }
-
-      Item {
-        id: keyCatcher
-        anchors.fill: parent
-        focus: true
-
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) {
-            if (root.createMode) root.cancelCreateSession()
-            else if (root.filterText) root.setFilter("")
-            else root.dismiss()
-            event.accepted = true
-          } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_R) {
-            root.fetchSessions()
-            event.accepted = true
-          } else if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_N || event.key === Qt.Key_T)) {
-            root.startCreateSession()
-            event.accepted = true
-          } else if (root.createMode) {
-            sessionNameInput.forceActiveFocus()
-          } else if (typeof Util !== "undefined" && typeof Util.editsFilter === "function" && Util.editsFilter(event, root.filterText)) {
-            root.setFilter(Util.editedFilter(event, root.filterText))
-            event.accepted = true
-          } else if (event.key === Qt.Key_Backspace) {
-            if (root.filterText.length > 0) {
-              root.setFilter(root.filterText.slice(0, -1))
-              event.accepted = true
-            }
-          } else if (event.key === Qt.Key_Up) {
-            root.select(-1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Down) {
-            root.select(1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_PageUp) {
-            root.select(-5)
-            event.accepted = true
-          } else if (event.key === Qt.Key_PageDown) {
-            root.select(5)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Home) {
-            root.selectAbsolute(0)
-            event.accepted = true
-          } else if (event.key === Qt.Key_End) {
-            root.selectAbsolute(displayModel.count - 1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (root.cursorActive) root.activateIndex(root.selectedIndex)
-            else if (displayModel.count > 0) root.activateIndex(0)
-            else root.startCreateSession()
-            event.accepted = true
-          } else if (event.text && event.text.length === 1
-                     && event.text.charCodeAt(0) >= 32
-                     && event.text.charCodeAt(0) !== 127
-                     && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
-            root.setFilter(root.filterText + event.text)
-            event.accepted = true
+        onClicked: {
+          if (typeof sessionTextInput !== "undefined") {
+            sessionTextInput.forceActiveFocus()
           }
         }
       }
@@ -415,17 +360,24 @@ Item {
             spacing: 2
 
             Row {
-              spacing: 8
-              Text {
-                text: "\ue900"
-                color: root.colorAccent
-                font.family: "omarchy"
-                font.pixelSize: 18
+              spacing: 10
+
+              Image {
+                id: omarchyLogo
+                source: "file:///usr/share/omarchy/icon.png"
+                width: 22
+                height: 22
+                fillMode: Image.PreserveAspectFit
                 anchors.verticalCenter: parent.verticalCenter
+                onStatusChanged: {
+                  if (status === Image.Error && source.toString() !== "file:///usr/share/omarchy/logo.svg") {
+                    source = "file:///usr/share/omarchy/logo.svg"
+                  }
+                }
               }
 
               Text {
-                text: root.filterText ? ("Search: " + root.filterText) : "Herdr Sessions"
+                text: "Herdr Sessions"
                 color: root.menuForeground
                 font.family: root.fontFamily
                 font.pixelSize: 18
@@ -436,7 +388,7 @@ Item {
             }
 
             Text {
-              text: root.filterText ? "Filtering active sessions" : "Browse and attach active environments"
+              text: "Browse, filter, or create active environments"
               color: root.colorMuted
               font.family: root.fontFamily
               font.pixelSize: 12
@@ -451,52 +403,6 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
 
-            // + New Session Button
-            Rectangle {
-              id: newBtn
-              height: 32
-              width: newBtnRow.width + 20
-              radius: 6
-              color: (root.createMode || newBtnMouse.containsMouse) ? root.colorAccent : Qt.rgba(root.colorAccent.r, root.colorAccent.g, root.colorAccent.b, 0.15)
-              border.color: root.colorAccent
-              border.width: 1
-
-              Row {
-                id: newBtnRow
-                anchors.centerIn: parent
-                spacing: 6
-
-                Text {
-                  text: root.createMode ? "✕" : "󰐕"
-                  color: (root.createMode || newBtnMouse.containsMouse) ? root.colorBackground : root.colorAccent
-                  font.family: root.fontFamily
-                  font.pixelSize: 13
-                  font.weight: Font.Bold
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: root.createMode ? "Cancel" : "New Session"
-                  color: (root.createMode || newBtnMouse.containsMouse) ? root.colorBackground : root.colorAccent
-                  font.family: root.fontFamily
-                  font.pixelSize: 12
-                  font.weight: Font.Medium
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-
-              MouseArea {
-                id: newBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (root.createMode) root.cancelCreateSession()
-                  else root.startCreateSession()
-                }
-              }
-            }
-
             // Reload shortcut hint
             Rectangle {
               height: 32
@@ -509,7 +415,7 @@ Item {
               Text {
                 anchors.centerIn: parent
                 text: "󰑐"
-                color: root.colorMuted
+                color: reloadMouse.containsMouse ? root.colorAccent : root.colorMuted
                 font.family: root.fontFamily
                 font.pixelSize: 14
               }
@@ -525,15 +431,14 @@ Item {
           }
         }
 
-        // Inline Session Creation Slot
+        // Permanent Session Name / Search Input Slot
         Rectangle {
-          id: createSlot
-          visible: root.createMode
+          id: sessionInputSlot
           width: parent.width
-          height: visible ? 42 : 0
+          height: root.inputSlotHeight
           radius: 8
           color: root.menuBackground
-          border.color: sessionNameInput.activeFocus ? root.colorAccent : root.menuBorder
+          border.color: sessionTextInput.activeFocus ? root.colorAccent : root.menuBorder
           border.width: 1
 
           Item {
@@ -541,18 +446,21 @@ Item {
             anchors.leftMargin: 12
             anchors.rightMargin: 8
 
+            // Search icon
             Text {
-              id: createSlotIcon
+              id: inputSlotIcon
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: "\ue900"
-              color: root.colorAccent
-              font.family: "omarchy"
+              text: "󰍉"
+              color: sessionTextInput.activeFocus ? root.colorAccent : root.colorMuted
+              font.family: root.fontFamily
               font.pixelSize: 16
             }
 
+            // Inline Create Button (shown when text is typed)
             Rectangle {
               id: createActionBtn
+              visible: sessionTextInput.text.trim().length > 0
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               height: 28
@@ -591,20 +499,25 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.commitCreateSession()
+                onClicked: {
+                  var name = sessionTextInput.text.trim()
+                  if (name.length > 0) {
+                    root.attachSession(name)
+                  }
+                }
               }
             }
 
             Item {
-              anchors.left: createSlotIcon.right
+              anchors.left: inputSlotIcon.right
               anchors.leftMargin: 10
-              anchors.right: createActionBtn.left
-              anchors.rightMargin: 10
+              anchors.right: createActionBtn.visible ? createActionBtn.left : parent.right
+              anchors.rightMargin: createActionBtn.visible ? 10 : 4
               anchors.top: parent.top
               anchors.bottom: parent.bottom
 
               TextInput {
-                id: sessionNameInput
+                id: sessionTextInput
                 anchors.fill: parent
                 verticalAlignment: TextInput.AlignVCenter
                 color: root.menuForeground
@@ -614,18 +527,60 @@ Item {
                 selectByMouse: true
                 selectionColor: root.colorAccent
                 selectedTextColor: root.colorBackground
-                text: root.newSessionInput
 
                 onTextChanged: {
-                  root.newSessionInput = text
+                  root.userNavigatedList = false
+                  root.cursorActive = false
+                  root.setFilter(text)
                 }
 
+                Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function(event) {
                   if (event.key === Qt.Key_Escape) {
-                    root.cancelCreateSession()
+                    root.dismiss()
+                    event.accepted = true
+                  } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_R) {
+                    root.fetchSessions()
+                    event.accepted = true
+                  } else if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_N || event.key === Qt.Key_T)) {
+                    sessionTextInput.selectAll()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Up) {
+                    root.select(-1)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Down) {
+                    root.select(1)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_PageUp) {
+                    root.select(-5)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_PageDown) {
+                    root.select(5)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Home) {
+                    root.selectAbsolute(0)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_End) {
+                    root.selectAbsolute(displayModel.count - 1)
                     event.accepted = true
                   } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.commitCreateSession()
+                    var trimmed = sessionTextInput.text.trim()
+                    if (root.userNavigatedList && displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count) {
+                      var selected = displayModel.get(root.selectedIndex)
+                      if (selected.isAction) {
+                        if (trimmed.length > 0) {
+                          root.attachSession(trimmed)
+                        } else {
+                          sessionTextInput.forceActiveFocus()
+                        }
+                      } else {
+                        root.attachSession(selected.name)
+                      }
+                    } else if (trimmed.length > 0) {
+                      root.attachSession(trimmed)
+                    } else if (displayModel.count > 0) {
+                      root.activateIndex(0)
+                    }
                     event.accepted = true
                   }
                 }
@@ -633,11 +588,11 @@ Item {
                 Text {
                   anchors.fill: parent
                   verticalAlignment: Text.AlignVCenter
-                  text: "Enter session name..."
+                  text: "Filter sessions or type new name to create..."
                   color: root.colorMuted
                   font.family: root.fontFamily
                   font.pixelSize: 13
-                  visible: !sessionNameInput.text && !sessionNameInput.inputMethodComposing
+                  visible: !sessionTextInput.text && !sessionTextInput.inputMethodComposing
                 }
               }
             }
@@ -653,8 +608,9 @@ Item {
 
         // Sessions List Area
         Item {
+          id: listContainer
           width: parent.width
-          height: parent.height - root.headerHeight - root.footerHeight - (root.createMode ? (createSlot.height + root.contentSpacing) : 0) - root.contentSpacing * 2 - 1
+          height: parent.height - root.headerHeight - root.inputSlotHeight - root.footerHeight - 2 - (root.contentSpacing * 5)
 
           ListView {
             id: sessionListView
@@ -825,6 +781,7 @@ Item {
                 }
                 onClicked: {
                   root.cursorActive = true
+                  root.userNavigatedList = true
                   root.selectedIndex = sessionRow.index
                   root.activateIndex(sessionRow.index)
                 }
@@ -867,7 +824,7 @@ Item {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               visible: !root.loading
-              text: root.errorMessage ? "Press Ctrl+R to retry" : "Press Enter or click New Session to start one"
+              text: root.errorMessage ? "Press Ctrl+R to retry" : "Type a name to create a new session"
               color: root.colorMuted
               font.family: root.fontFamily
               font.pixelSize: 12
@@ -902,9 +859,9 @@ Item {
           Text {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.createMode
-              ? "Enter Create  ·  Esc Cancel"
-              : "Enter Attach  ·  Ctrl+N New  ·  Ctrl+R Refresh  ·  Esc Close"
+            text: sessionTextInput.text.trim().length > 0
+              ? "Enter Create / Attach  ·  ↑↓ Select  ·  Esc Dismiss"
+              : "Enter Attach  ·  ↑↓ Select  ·  Ctrl+R Refresh  ·  Esc Dismiss"
             color: root.colorMuted
             font.family: root.fontFamily
             font.pixelSize: 11
